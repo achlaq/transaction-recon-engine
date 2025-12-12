@@ -1,11 +1,11 @@
 version: '3.8'
 services:
   postgres:
-    image: postgres:15
+    image: postgres:17.6
     environment:
       POSTGRES_DB: aegis_db
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
     ports:
       - "5432:5432"
 
