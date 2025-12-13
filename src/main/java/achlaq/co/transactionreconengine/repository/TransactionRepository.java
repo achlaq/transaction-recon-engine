@@ -1,6 +1,7 @@
 package achlaq.co.transactionreconengine.repository;
 
 import achlaq.co.transactionreconengine.model.TransactionEntity;
+import achlaq.co.transactionreconengine.repository.projection.HighValueUserProjection;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
@@ -25,6 +26,6 @@ public interface TransactionRepository extends JpaRepository<TransactionEntity, 
         WHERE u.total_spent > (g.global_avg * 1.5)
         ORDER BY u.total_spent DESC
     """, nativeQuery = true)
-    List<Object[]> findHighValueUsersAboveAverage();
+    List<HighValueUserProjection> findHighValueUsersAboveAverage();
 
 }
