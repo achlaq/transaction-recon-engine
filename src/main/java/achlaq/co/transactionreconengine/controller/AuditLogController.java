@@ -1,10 +1,20 @@
 package achlaq.co.transactionreconengine.controller;
 
+import achlaq.co.transactionreconengine.dto.HighValueUserProjection;
+import achlaq.co.transactionreconengine.service.AuditLogService;
 import achlaq.co.transactionreconengine.document.AuditLogDocument;
-import achlaq.co.transactionreconengine.repository.AuditLogRepository;
 import lombok.RequiredArgsConstructor;
+import org.apache.coyote.BadRequestException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.web.bind.annotation.*;
 
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
@@ -12,25 +22,43 @@ import java.util.List;
 @RequiredArgsConstructor
 public class AuditLogController {
 
-    private final AuditLogRepository auditLogRepo;
+    private final AuditLogService auditLogService;
 
     @GetMapping
-    public Iterable<AuditLogDocument> getAllLogs() {
-        return auditLogRepo.findAll();
+    public ResponseEntity<Page<AuditLogDocument>> getAllLogs(
+            @PageableDefault(
+                    size = 20,
+                    page = 0,
+                    sort = "timestamp",
+                    direction = Sort.Direction.DESC
+            )
+            Pageable pageable
+    ) throws Exception {
+        if (pageable.getOffset() > 10000) {
+            throw new BadRequestException("Halaman terlalu jauh. Gunakan filter tanggal untuk mempersempit pencarian.");
+        }
+
+        return ResponseEntity.ok(auditLogService.findAll(pageable));
     }
 
     @GetMapping("/user/{userId}")
-    public List<AuditLogDocument> getLogsByUser(@PathVariable Long userId) {
-        return auditLogRepo.findByUserId(userId);
+    public ResponseEntity<List<AuditLogDocument>> getLogsByUser(@PathVariable Long userId) {
+        return ResponseEntity.ok(auditLogService.findByUserId(userId));
     }
 
-    @GetMapping("/risk/{level}")
-    public List<AuditLogDocument> getLogsByRisk(@PathVariable String level) {
-        return auditLogRepo.findByRiskLevel(level);
+    @GetMapping("/risk-level/{riskLevel}")
+    public ResponseEntity<List<AuditLogDocument>> getLogsByRiskLevel(@PathVariable String riskLevel) {
+        return ResponseEntity.ok(auditLogService.findByRiskLevel(riskLevel));
     }
 
     @GetMapping("/search")
-    public List<AuditLogDocument> searchSuspiciousUser(@RequestParam Long userId) {
-        return auditLogRepo.findByUserIdAndRiskLevel(userId, "HIGH");
+    public ResponseEntity<List<AuditLogDocument>> searchSuspiciousUser(@RequestParam Long userId) {
+        return ResponseEntity.ok(auditLogService.findSuspiciousLogs(userId));
+    }
+
+    @GetMapping("/high-value-users")
+    public ResponseEntity<List<HighValueUserProjection>> getHighValueUsers(String currentUserId, String requestId) {
+        List<HighValueUserProjection> users = auditLogService.getHighValueUsers(currentUserId, requestId);
+        return users.isEmpty() ? ResponseEntity.noContent().build() : ResponseEntity.ok(users);
     }
 }

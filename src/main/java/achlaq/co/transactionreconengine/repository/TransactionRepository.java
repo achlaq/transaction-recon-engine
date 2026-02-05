@@ -1,7 +1,7 @@
 package achlaq.co.transactionreconengine.repository;
 
+import achlaq.co.transactionreconengine.dto.HighValueUserProjection;
 import achlaq.co.transactionreconengine.model.TransactionEntity;
-import achlaq.co.transactionreconengine.repository.projection.HighValueUserProjection;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
