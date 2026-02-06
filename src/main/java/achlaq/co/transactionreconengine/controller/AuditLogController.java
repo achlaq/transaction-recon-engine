@@ -1,6 +1,5 @@
 package achlaq.co.transactionreconengine.controller;
 
-import achlaq.co.transactionreconengine.dto.HighValueUserProjection;
 import achlaq.co.transactionreconengine.service.AuditLogService;
 import achlaq.co.transactionreconengine.document.AuditLogDocument;
 import lombok.RequiredArgsConstructor;
@@ -56,9 +55,4 @@ public class AuditLogController {
         return ResponseEntity.ok(auditLogService.findSuspiciousLogs(userId));
     }
 
-    @GetMapping("/high-value-users")
-    public ResponseEntity<List<HighValueUserProjection>> getHighValueUsers(String currentUserId, String requestId) {
-        List<HighValueUserProjection> users = auditLogService.getHighValueUsers(currentUserId, requestId);
-        return users.isEmpty() ? ResponseEntity.noContent().build() : ResponseEntity.ok(users);
-    }
 }
