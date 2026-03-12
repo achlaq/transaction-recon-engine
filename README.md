@@ -30,6 +30,9 @@ Server berjalan di `http://localhost:7654`.
 - `GET /api/v1/blacklist/{userId}`
 - `POST /api/v1/ledger/accounts`
 - `POST /api/v1/ledger/journals`
+- `POST /api/v1/recon/snapshots`
+- `POST /api/v1/recon/run/{sourceSystem}/{referenceId}`
+- `GET /api/v1/recon/results?status={status}`
 
 ## Contoh Request
 ```bash
@@ -65,6 +68,21 @@ curl -X POST http://localhost:7654/api/v1/ledger/journals \
       { "accountId": 2, "entryType": "CREDIT", "amount": 100000, "description": "Revenue" }
     ]
   }'
+```
+
+## Contoh Rekonsiliasi
+```bash
+curl -X POST http://localhost:7654/api/v1/recon/snapshots \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sourceSystem": "switch",
+    "referenceId": "jrn-001",
+    "amount": 100000,
+    "currency": "IDR",
+    "eventTime": "2025-01-01T10:00:00"
+  }'
+
+curl "http://localhost:7654/api/v1/recon/results?status=MATCHED"
 ```
 
 ## Kafka Topics
