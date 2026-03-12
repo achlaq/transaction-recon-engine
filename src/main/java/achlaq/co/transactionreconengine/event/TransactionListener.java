@@ -14,7 +14,10 @@ public class TransactionListener {
 
     private final TransactionProcessor processor;
 
-    @KafkaListener(topics = "trx-events", groupId = "aegis-group")
+    @KafkaListener(
+            topics = "${app.kafka.topics.transactions}",
+            groupId = "${spring.kafka.consumer.group-id}"
+    )
     public void onTransaction(TransactionEvent event) {
         log.info("Received event: {}", event.getRequestId());
         processor.process(event);

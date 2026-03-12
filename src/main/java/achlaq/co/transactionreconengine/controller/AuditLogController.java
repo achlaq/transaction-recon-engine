@@ -3,7 +3,6 @@ package achlaq.co.transactionreconengine.controller;
 import achlaq.co.transactionreconengine.service.AuditLogService;
 import achlaq.co.transactionreconengine.document.AuditLogDocument;
 import lombok.RequiredArgsConstructor;
-import org.apache.coyote.BadRequestException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -11,9 +10,11 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.web.bind.annotation.*;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
 
 @RestController
@@ -32,9 +33,12 @@ public class AuditLogController {
                     direction = Sort.Direction.DESC
             )
             Pageable pageable
-    ) throws Exception {
+    ) {
         if (pageable.getOffset() > 10000) {
-            throw new BadRequestException("Halaman terlalu jauh. Gunakan filter tanggal untuk mempersempit pencarian.");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Halaman terlalu jauh. Gunakan filter tanggal untuk mempersempit pencarian."
+            );
         }
 
         return ResponseEntity.ok(auditLogService.findAll(pageable));
