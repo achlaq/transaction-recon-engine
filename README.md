@@ -70,6 +70,8 @@ curl -X POST http://localhost:7654/api/v1/ledger/journals \
 ## Kafka Topics
 - `trx-events` untuk transaksi.
 - `trx-events-dlq` untuk dead-letter (pesan gagal setelah retry).
+- `ledger-events` untuk posting journal.
+- `ledger-events-dlq` untuk dead-letter ledger.
 
 Jika auto topic creation dimatikan, buat topic ini manual terlebih dulu.
 

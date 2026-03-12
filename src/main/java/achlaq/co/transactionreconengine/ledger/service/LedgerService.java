@@ -3,6 +3,8 @@ package achlaq.co.transactionreconengine.ledger.service;
 import achlaq.co.transactionreconengine.ledger.dto.JournalEntryRequest;
 import achlaq.co.transactionreconengine.ledger.dto.JournalPostRequest;
 import achlaq.co.transactionreconengine.ledger.dto.LedgerAccountRequest;
+import achlaq.co.transactionreconengine.ledger.dto.LedgerEvent;
+import achlaq.co.transactionreconengine.ledger.dto.LedgerEventEntry;
 import achlaq.co.transactionreconengine.ledger.model.EntryType;
 import achlaq.co.transactionreconengine.ledger.model.JournalHeader;
 import achlaq.co.transactionreconengine.ledger.model.LedgerAccount;
@@ -45,6 +47,16 @@ public class LedgerService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Journal ID already exists");
         });
 
+        return createJournalFromRequest(request);
+    }
+
+    @Transactional
+    public JournalHeader postJournalFromEvent(LedgerEvent event) {
+        return journalRepository.findByJournalId(event.getJournalId())
+                .orElseGet(() -> createJournalFromEvent(event));
+    }
+
+    private JournalHeader createJournalFromRequest(JournalPostRequest request) {
         if (request.getEntries().size() < 2) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "At least two entries required");
         }
@@ -81,6 +93,52 @@ public class LedgerService {
         journal.setJournalId(request.getJournalId());
         journal.setReferenceId(request.getReferenceId());
         journal.setDescription(request.getDescription());
+
+        for (LedgerEntry entry : entries) {
+            entry.setJournal(journal);
+        }
+        journal.setEntries(entries);
+
+        return journalRepository.save(journal);
+    }
+
+    private JournalHeader createJournalFromEvent(LedgerEvent event) {
+        if (event.getEntries() == null || event.getEntries().size() < 2) {
+            throw new IllegalArgumentException("At least two entries required");
+        }
+
+        BigDecimal debitTotal = BigDecimal.ZERO;
+        BigDecimal creditTotal = BigDecimal.ZERO;
+        List<LedgerEntry> entries = new ArrayList<>();
+
+        for (LedgerEventEntry entryEvent : event.getEntries()) {
+            LedgerAccount account = accountRepository.findByCode(entryEvent.getAccountCode())
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Account not found: " + entryEvent.getAccountCode()
+                    ));
+
+            LedgerEntry entry = new LedgerEntry();
+            entry.setAccount(account);
+            entry.setEntryType(entryEvent.getEntryType());
+            entry.setAmount(entryEvent.getAmount());
+            entry.setEntryDescription(entryEvent.getDescription());
+            entries.add(entry);
+
+            if (entryEvent.getEntryType() == EntryType.DEBIT) {
+                debitTotal = debitTotal.add(entryEvent.getAmount());
+            } else {
+                creditTotal = creditTotal.add(entryEvent.getAmount());
+            }
+        }
+
+        if (debitTotal.compareTo(creditTotal) != 0) {
+            throw new IllegalArgumentException("Journal not balanced");
+        }
+
+        JournalHeader journal = new JournalHeader();
+        journal.setJournalId(event.getJournalId());
+        journal.setReferenceId(event.getReferenceId());
+        journal.setDescription(event.getDescription());
 
         for (LedgerEntry entry : entries) {
             entry.setJournal(journal);

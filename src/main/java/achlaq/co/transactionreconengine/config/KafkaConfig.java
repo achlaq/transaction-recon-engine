@@ -17,13 +17,25 @@ public class KafkaConfig {
     @Value("${app.kafka.topics.transactions-dlq}")
     private String transactionsDlqTopic;
 
+    @Value("${app.kafka.topics.ledger}")
+    private String ledgerTopic;
+
+    @Value("${app.kafka.topics.ledger-dlq}")
+    private String ledgerDlqTopic;
+
     @Bean
     public DeadLetterPublishingRecoverer deadLetterPublishingRecoverer(
             KafkaTemplate<Object, Object> template
     ) {
         return new DeadLetterPublishingRecoverer(
                 template,
-                (record, ex) -> new TopicPartition(transactionsDlqTopic, record.partition())
+                (record, ex) -> {
+                    String topic = record.topic();
+                    if (ledgerTopic.equals(topic)) {
+                        return new TopicPartition(ledgerDlqTopic, record.partition());
+                    }
+                    return new TopicPartition(transactionsDlqTopic, record.partition());
+                }
         );
     }
 
