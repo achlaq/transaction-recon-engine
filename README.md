@@ -28,6 +28,8 @@ Server berjalan di `http://localhost:7654`.
 - `POST /api/v1/blacklist/{userId}`
 - `DELETE /api/v1/blacklist/{userId}`
 - `GET /api/v1/blacklist/{userId}`
+- `POST /api/v1/ledger/accounts`
+- `POST /api/v1/ledger/journals`
 
 ## Contoh Request
 ```bash
@@ -39,6 +41,29 @@ curl -X POST http://localhost:7654/api/v1/transactions \
     "amount": 120000,
     "currency": "IDR",
     "targetAccount": "acct-991"
+  }'
+```
+
+## Contoh Journal Posting
+```bash
+curl -X POST http://localhost:7654/api/v1/ledger/accounts \
+  -H "Content-Type: application/json" \
+  -d '{"code":"CASH","name":"Cash Account"}'
+
+curl -X POST http://localhost:7654/api/v1/ledger/accounts \
+  -H "Content-Type: application/json" \
+  -d '{"code":"REV","name":"Revenue Account"}'
+
+curl -X POST http://localhost:7654/api/v1/ledger/journals \
+  -H "Content-Type: application/json" \
+  -d '{
+    "journalId": "jrn-001",
+    "referenceId": "req-123",
+    "description": "Sample posting",
+    "entries": [
+      { "accountId": 1, "entryType": "DEBIT", "amount": 100000, "description": "Cash in" },
+      { "accountId": 2, "entryType": "CREDIT", "amount": 100000, "description": "Revenue" }
+    ]
   }'
 ```
 
