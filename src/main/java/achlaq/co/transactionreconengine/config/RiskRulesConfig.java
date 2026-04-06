@@ -5,15 +5,18 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
-import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 
 @Data
 @Configuration
 @ConfigurationProperties(prefix = "app.risk")
 public class RiskRulesConfig {
-    private List<RiskRule> rules = List.of(
-            new RiskRule(new BigDecimal("100000000"), "HIGH", "FRAUD_DETECTED", "High Value Transaction Exceeded"),
-            new RiskRule(new BigDecimal("999999"), "MEDIUM", "REVIEW_NEEDED", "Suspicious Medium Value")
-    );
+    
+    /**
+     * Risk rules definitions.
+     * These rules are configured in application.properties under the prefix 'app.risk.rules'.
+     * If not provided in the properties file, it will default to an empty list.
+     */
+    private List<RiskRule> rules = new ArrayList<>();
 }

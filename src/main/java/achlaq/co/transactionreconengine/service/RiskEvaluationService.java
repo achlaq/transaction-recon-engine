@@ -19,7 +19,8 @@ public class RiskEvaluationService {
         BigDecimal amount = event.getAmount();
         String currency = event.getCurrency();
 
-        // 1. Evaluate based on amount limits
+        // 1. Evaluate based on amount limits from configuration
+        // If the rules are empty (not configured), it will default to LOW risk
         RiskRule amountBasedRule = riskRulesConfig.getRules().stream()
                 .filter(rule -> amount.compareTo(rule.getLimit()) >= 0)
                 .max(Comparator.comparing(RiskRule::getLimit))
