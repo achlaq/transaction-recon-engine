@@ -1,22 +1,17 @@
 package achlaq.co.transactionreconengine.service;
 
-import achlaq.co.transactionreconengine.document.AuditLogDocument;
 import achlaq.co.transactionreconengine.dto.RiskRule;
 import achlaq.co.transactionreconengine.dto.TransactionEvent;
 import achlaq.co.transactionreconengine.model.TransactionEntity;
-import achlaq.co.transactionreconengine.repository.AuditLogRepository;
 import achlaq.co.transactionreconengine.repository.TransactionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.Comparator;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -24,19 +19,15 @@ import java.util.concurrent.TimeUnit;
 public class TransactionProcessor {
 
     private final TransactionRepository transactionRepo;
-    private final AuditLogRepository auditLogRepo;
     private final StringRedisTemplate redisTemplate;
+    private final RateLimitService rateLimitService;
+    private final RiskEvaluationService riskEvaluationService;
+    private final AuditService auditService;
 
-    private final List<RiskRule> RISK_RULES = List.of(
-            new RiskRule(new BigDecimal("100000000"), "HIGH", "FRAUD_DETECTED", "High Value Transaction Exceeded"),
-            new RiskRule(new BigDecimal("999999"), "MEDIUM", "REVIEW_NEEDED", "Suspicious Medium Value")
-    );
-    private static final int MAX_TX_PER_MINUTE = 5;
-
+    @Transactional
     public void process(TransactionEvent event) {
         String requestId = event.getRequestId();
         Long userId = event.getUserId();
-        BigDecimal amount = event.getAmount();
 
         String lockKey = "LOCK::" + requestId;
         Boolean isLocked = redisTemplate.opsForValue()
@@ -47,22 +38,28 @@ public class TransactionProcessor {
             return;
         }
 
-        if (isUserBlacklisted(userId)) {
-            saveAuditLogToElastic(event, "REJECTED_BLACKLIST", "HIGH", "User is in blacklist");
-            return;
+        try {
+            if (rateLimitService.isUserBlacklisted(userId)) {
+                auditService.saveAuditLogToElastic(event, "REJECTED_BLACKLIST", "HIGH", "User is in blacklist");
+                return;
+            }
+
+            if (rateLimitService.isRateLimited(userId)) {
+                auditService.saveAuditLogToElastic(event, "REJECTED_RATE_LIMIT", "HIGH", "Velocity limit exceeded");
+                return;
+            }
+
+            RiskRule matchedRule = riskEvaluationService.evaluateRisk(event);
+
+            saveTransactionAndAudit(event, matchedRule);
+
+        } finally {
+            try {
+                redisTemplate.delete(lockKey);
+            } catch (Exception e) {
+                log.error("Failed to release Redis lock for key: {}", lockKey, e);
+            }
         }
-
-        if (isRateLimited(userId)) {
-            saveAuditLogToElastic(event, "REJECTED_RATE_LIMIT", "HIGH", "Velocity limit exceeded");
-            return;
-        }
-
-        RiskRule matchedRule = RISK_RULES.stream()
-                .filter(rule -> amount.compareTo(rule.getLimit()) >= 0)
-                .max(Comparator.comparing(RiskRule::getLimit))
-                .orElse(new RiskRule(BigDecimal.ZERO, "LOW", "SUCCESS", "Normal Transaction"));
-
-        saveTransactionAndAudit(event, matchedRule);
     }
 
     private void saveTransactionAndAudit(TransactionEvent event, RiskRule rule) {
@@ -75,42 +72,8 @@ public class TransactionProcessor {
 
         transactionRepo.save(entity);
 
-        saveAuditLogToElastic(event, rule.getStatus(), rule.getRiskLevel(), rule.getReason());
+        auditService.saveAuditLogToElastic(event, rule.getStatus(), rule.getRiskLevel(), rule.getReason());
 
         log.info("Tx Processed | ID: {} | Status: {}", event.getRequestId(), rule.getStatus());
-    }
-
-    private void saveAuditLogToElastic(TransactionEvent event, String action, String riskLevel, String metadata) {
-        try {
-            AuditLogDocument doc = AuditLogDocument.builder()
-                    .requestId(event.getRequestId())
-                    .userId(event.getUserId())
-                    .action(action)
-                    .riskLevel(riskLevel)
-                    .metadata(metadata)
-                    .amountSnapshot(event.getAmount())
-                    .timestamp(LocalDateTime.now())
-                    .build();
-
-            auditLogRepo.save(doc);
-
-        } catch (Exception e) {
-            log.error("Gagal menyimpan Audit Log ke Elastic untuk ReqID: {}", event.getRequestId(), e);
-        }
-    }
-
-    private boolean isRateLimited(Long userId) {
-        String key = "VELOCITY::" + String.valueOf(userId);
-        Long count = redisTemplate.opsForValue().increment(key);
-        if (count != null && count == 1) {
-            redisTemplate.expire(key, 60, TimeUnit.SECONDS);
-        }
-        return count != null && count > MAX_TX_PER_MINUTE;
-    }
-
-    private boolean isUserBlacklisted(Long userId) {
-        return Boolean.TRUE.equals(
-                redisTemplate.opsForSet().isMember("BLACKLIST_USERS", String.valueOf(userId))
-        );
     }
 }
