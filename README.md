@@ -1,116 +1,113 @@
-# 🚀 Transaction Recon Engine
+# Transaction Recon Engine
 
-Welcome to the **Transaction Recon Engine**! This Spring Boot service is your one-stop solution for handling financial transactions with style. It ingests transactions via REST, processes events using Kafka, stores data in PostgreSQL, and keeps detailed audit logs in Elasticsearch. To top it off, we use Redis for blacklisting and rate limiting.️
+A robust, event-driven financial transaction processing and reconciliation engine built with Spring Boot. 
 
-## 🛠️ Prerequisites
-- Java 17
-- Docker + Docker Compose
+This service is designed to handle high-volume financial transactions asynchronously. It ingests transactions via REST, processes them through a multi-stage security and risk evaluation pipeline, records movements in a double-entry ledger, and performs automated reconciliation against external systems.
 
-## 🐳 Running Dependencies
-Get all the necessary services (Postgres, Kafka, etc.) up and running with a single command:
-```bash
-docker compose up -d
-```
+## Architecture Overview
 
-## ▶️ Running the Application
-Fire up the engine with:
-```bash
-./mvnw spring-boot:run
-```
-The server will be live at `http://localhost:7654`.
+The system utilizes an event-driven choreography pattern to ensure high availability, decoupling, and fault tolerance:
 
-## 📖 API Documentation
-Once the application is running, you can explore the API documentation at:
+1. **Ingestion & Validation:** Transactions are ingested via REST API and immediately pushed to Apache Kafka, returning a fast acknowledgment to the client.
+2. **Security & Risk Pipeline:** A background processor consumes events, applies distributed locks (Redis) to prevent race conditions, checks for rate limits and blacklists, and evaluates risk based on amount and currency.
+3. **Persistence & Audit:** Valid transactions are stored in PostgreSQL. Every decision (success, rejected, frozen) is audited and indexed in Elasticsearch.
+4. **Asynchronous Ledger:** Successful transactions publish events to a ledger topic, triggering a separate module to record double-entry bookkeeping (Debit/Credit).
+5. **Automated Reconciliation:** The system simulates receiving external snapshots and automatically attempts to match them against internal ledger entries.
+
+## Tech Stack
+
+* **Backend Framework:** Java 17, Spring Boot 3
+* **Message Broker:** Apache Kafka (Event streaming, DLQs)
+* **Database & Migration:** PostgreSQL, Flyway (Schema management & data seeding)
+* **Caching & Locking:** Redis (Distributed locks, rate limiting)
+* **Search & Audit:** Elasticsearch (High-speed audit trails)
+* **Observability:** Prometheus, Spring Boot Actuator
+* **Testing:** Testcontainers, JUnit 5, Awaitility
+
+## Prerequisites
+
+Ensure you have the following installed before running the application:
+* Java 17+
+* Maven
+* Docker & Docker Compose (required for running infrastructure and Testcontainers)
+
+## Running the Application
+
+1. **Start Infrastructure Services**
+   Spin up the required services (PostgreSQL, Kafka, Zookeeper, Redis, Elasticsearch) using Docker Compose:
+   ```bash
+   docker compose up -d
+   ```
+   Wait a few moments for all containers to become healthy.
+
+2. **Run the Spring Boot Service**
+   Start the application. Flyway will automatically execute database migrations and seed initial Chart of Accounts (COA) data.
+   ```bash
+   ./mvnw spring-boot:run
+   ```
+   The service will be available at `http://localhost:7654`.
+
+## API Documentation
+
+Once the application is running, the Swagger UI is available at:
 [http://localhost:7654/swagger-ui.html](http://localhost:7654/swagger-ui.html)
 
-## 🎯 Core Endpoints
-Here are the key endpoints to interact with the engine:
+## End-to-End Testing Guide
 
-- `POST /api/v1/transactions`: Ingest a new transaction into Kafka.
-- `GET /api/v1/audit-logs`: Paginated audit logs.
-- `GET /api/v1/audit-logs/user/{userId}`: Get logs for a specific user.
-- `GET /api/v1/audit-logs/risk-level/{riskLevel}`: Filter logs by risk level.
-- `GET /api/v1/audit-logs/search?userId={userId}`: Search logs.
-- `GET /api/v1/analytics/high-value-users`: Identify high-value users.
-- `POST /api/v1/blacklist/{userId}`: Add a user to the blacklist.
-- `DELETE /api/v1/blacklist/{userId}`: Remove a user from the blacklist.
-- `GET /api/v1/blacklist/{userId}`: Check if a user is blacklisted.
-- `POST /api/v1/ledger/accounts`: Create a new ledger account.
-- `POST /api/v1/ledger/journals`: Post a new journal entry.
-- `POST /api/v1/recon/snapshots`: Create a reconciliation snapshot.
-- `POST /api/v1/recon/run/{sourceSystem}/{referenceId}`: Run reconciliation.
-- `GET /api/v1/recon/results?status={status}`: Get reconciliation results.
+Here is a quick guide to test the complete flow (Transaction -> Ledger -> Reconciliation).
 
-## 📝 Sample Requests
-
-### Transaction Ingestion
+### 1. Submit a Transaction
+Send a transaction request. The target account `CASH` is pre-seeded by Flyway.
 ```bash
 curl -X POST http://localhost:7654/api/v1/transactions \
   -H "Content-Type: application/json" \
   -d '{
-    "requestId": "req-123",
+    "requestId": "trx-demo-001",
     "userId": 1001,
-    "amount": 120000,
+    "amount": 50000,
     "currency": "IDR",
-    "targetAccount": "acct-991"
+    "targetAccount": "CASH"
   }'
 ```
 
-### Journal Posting
+### 2. Verify Reconciliation Results
+Because the transaction is marked as SUCCESS, the engine automatically creates ledger entries and an external snapshot, then runs reconciliation. Check the result:
 ```bash
-# Create accounts first
-curl -X POST http://localhost:7654/api/v1/ledger/accounts \
-  -H "Content-Type: application/json" \
-  -d '{"code":"CASH","name":"Cash Account"}'
-
-curl -X POST http://localhost:7654/api/v1/ledger/accounts \
-  -H "Content-Type: application/json" \
-  -d '{"code":"REV","name":"Revenue Account"}'
-
-# Post the journal
-curl -X POST http://localhost:7654/api/v1/ledger/journals \
-  -H "Content-Type: application/json" \
-  -d '{
-    "journalId": "jrn-001",
-    "referenceId": "req-123",
-    "description": "Sample posting",
-    "entries": [
-      { "accountId": 1, "entryType": "DEBIT", "amount": 100000, "description": "Cash in" },
-      { "accountId": 2, "entryType": "CREDIT", "amount": 100000, "description": "Revenue" }
-    ]
-  }'
-```
-
-### Reconciliation
-```bash
-# Create a snapshot
-curl -X POST http://localhost:7654/api/v1/recon/snapshots \
-  -H "Content-Type: application/json" \
-  -d '{
-    "sourceSystem": "switch",
-    "referenceId": "jrn-001",
-    "amount": 100000,
-    "currency": "IDR",
-    "eventTime": "2025-01-01T10:00:00"
-  }'
-
-# Check results
 curl "http://localhost:7654/api/v1/recon/results?status=MATCHED"
 ```
+You should see a JSON array containing the matched result for `trx-demo-001`.
 
-## 📨 Kafka Topics
-- `trx-events`: For main transaction events.
-- `trx-events-dlq`: Dead-letter queue for failed transaction events.
-- `ledger-events`: For journal posting events.
-- `ledger-events-dlq`: Dead-letter queue for ledger events.
+### 3. Test Security Constraints (Blacklist & Rate Limiting)
+Add a user to the blacklist:
+```bash
+curl -X POST http://localhost:7654/api/v1/blacklist/9999
+```
+Attempt a transaction with that user:
+```bash
+curl -X POST http://localhost:7654/api/v1/transactions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "requestId": "trx-fraud-001",
+    "userId": 9999,
+    "amount": 100000,
+    "currency": "IDR",
+    "targetAccount": "CASH"
+  }'
+```
+The transaction will be rejected silently by the background processor, audited in Elasticsearch, and will not generate ledger or reconciliation events.
 
-If auto topic creation is disabled, please create these topics manually.
+## Running Automated Tests
 
-## 📊 Observability
-Check the health and metrics of the service with our Actuator endpoints:
-- `GET /actuator/health`
-- `GET /actuator/metrics`
-- `GET /actuator/prometheus`
+The project includes integration tests that spin up temporary Docker containers using **Testcontainers**. Make sure Docker Desktop is running, then execute:
 
-## ⚙️ Configuration
-All configurations for the database, Kafka, Redis, and Elasticsearch can be found in `src/main/resources/application.properties`.
+```bash
+./mvnw test
+```
+
+## Project Structure Highlights
+
+* `/service`: Contains the core business logic (`TransactionProcessor`, `RiskEvaluationService`, `RateLimitService`, `AuditService`).
+* `/ledger`: An independent module handling double-entry accounting, listening to Kafka events to post journals.
+* `/recon`: A module dedicated to comparing internal ledger records with external snapshots.
+* `/config`: Configurations for Kafka, Risk Rules, and OpenAPI.
+* `db/migration`: Flyway SQL scripts for schema versioning and data seeding.
