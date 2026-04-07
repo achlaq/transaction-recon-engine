@@ -12,7 +12,7 @@ The system utilizes an event-driven choreography pattern to ensure high availabi
 2. **Security & Risk Pipeline:** A background processor consumes events, applies distributed locks (Redis) to prevent race conditions, checks for rate limits and blacklists, and evaluates risk based on amount and currency.
 3. **Persistence & Audit:** Valid transactions are stored in PostgreSQL. Every decision (success, rejected, frozen) is audited and indexed in Elasticsearch.
 4. **Asynchronous Ledger:** Successful transactions publish events to a ledger topic, triggering a separate module to record double-entry bookkeeping (Debit/Credit).
-5. **Automated Reconciliation:** The system simulates receiving external snapshots and automatically attempts to match them against internal ledger entries.
+5. **Automated Reconciliation & Settlement:** The system simulates receiving external snapshots and automatically attempts to match them against internal ledger entries. A scheduled End-of-Day (EOD) job runs daily to generate settlement reports.
 
 ## Tech Stack
 
@@ -21,6 +21,7 @@ The system utilizes an event-driven choreography pattern to ensure high availabi
 * **Database & Migration:** PostgreSQL, Flyway (Schema management & data seeding)
 * **Caching & Locking:** Redis (Distributed locks, rate limiting)
 * **Search & Audit:** Elasticsearch (High-speed audit trails)
+* **Batch Processing:** Spring Scheduling / Spring Batch
 * **Observability:** Prometheus, Spring Boot Actuator
 * **Testing:** Testcontainers, JUnit 5, Awaitility
 
@@ -77,7 +78,14 @@ curl "http://localhost:7654/api/v1/recon/results?status=MATCHED"
 ```
 You should see a JSON array containing the matched result for `trx-demo-001`.
 
-### 3. Test Security Constraints (Blacklist & Rate Limiting)
+### 3. Generate End-of-Day (EOD) Settlement Report
+The EOD Settlement job runs automatically every day at 23:59. To manually trigger it and generate a CSV report of today's settled transactions, run:
+```bash
+curl -X POST http://localhost:7654/api/v1/recon/settlement/trigger
+```
+Check the root folder of your project for the generated `.csv` file.
+
+### 4. Test Security Constraints (Blacklist & Rate Limiting)
 Add a user to the blacklist:
 ```bash
 curl -X POST http://localhost:7654/api/v1/blacklist/9999
@@ -108,6 +116,6 @@ The project includes integration tests that spin up temporary Docker containers 
 
 * `/service`: Contains the core business logic (`TransactionProcessor`, `RiskEvaluationService`, `RateLimitService`, `AuditService`).
 * `/ledger`: An independent module handling double-entry accounting, listening to Kafka events to post journals.
-* `/recon`: A module dedicated to comparing internal ledger records with external snapshots.
-* `/config`: Configurations for Kafka, Risk Rules, and OpenAPI.
+* `/recon`: A module dedicated to comparing internal ledger records with external snapshots, and running scheduled EOD settlement jobs.
+* `/config`: Configurations for Kafka, Risk Rules, Redis Caching, and OpenAPI.
 * `db/migration`: Flyway SQL scripts for schema versioning and data seeding.
