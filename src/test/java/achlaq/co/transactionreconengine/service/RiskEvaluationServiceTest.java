@@ -1,8 +1,9 @@
 package achlaq.co.transactionreconengine.service;
 
-import achlaq.co.transactionreconengine.config.RiskRulesConfig;
-import achlaq.co.transactionreconengine.dto.RiskRule;
-import achlaq.co.transactionreconengine.dto.TransactionEvent;
+import achlaq.co.transactionreconengine.risk.config.RiskRulesConfig;
+import achlaq.co.transactionreconengine.risk.dto.RiskRule;
+import achlaq.co.transactionreconengine.core.dto.TransactionEvent;
+import achlaq.co.transactionreconengine.risk.service.RiskEvaluationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 

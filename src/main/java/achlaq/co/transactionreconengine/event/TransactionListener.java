@@ -1,7 +1,7 @@
 package achlaq.co.transactionreconengine.event;
 
-import achlaq.co.transactionreconengine.dto.TransactionEvent;
-import achlaq.co.transactionreconengine.service.TransactionProcessor;
+import achlaq.co.transactionreconengine.core.dto.TransactionEvent;
+import achlaq.co.transactionreconengine.core.service.TransactionProcessor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;

@@ -1,8 +1,8 @@
 package achlaq.co.transactionreconengine;
 
-import achlaq.co.transactionreconengine.dto.TransactionEvent;
-import achlaq.co.transactionreconengine.model.TransactionEntity;
-import achlaq.co.transactionreconengine.repository.TransactionRepository;
+import achlaq.co.transactionreconengine.core.dto.TransactionEvent;
+import achlaq.co.transactionreconengine.core.model.TransactionEntity;
+import achlaq.co.transactionreconengine.core.repository.TransactionRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
