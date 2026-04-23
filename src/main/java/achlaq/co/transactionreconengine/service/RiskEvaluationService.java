@@ -4,6 +4,7 @@ import achlaq.co.transactionreconengine.config.RiskRulesConfig;
 import achlaq.co.transactionreconengine.dto.RiskRule;
 import achlaq.co.transactionreconengine.dto.TransactionEvent;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -14,6 +15,9 @@ import java.util.Comparator;
 public class RiskEvaluationService {
 
     private final RiskRulesConfig riskRulesConfig;
+    
+    @Value("${app.risk.base-currency}")
+    private String baseCurrency;
 
     public RiskRule evaluateRisk(TransactionEvent event) {
         BigDecimal amount = event.getAmount();
@@ -27,8 +31,8 @@ public class RiskEvaluationService {
                 .orElse(new RiskRule(BigDecimal.ZERO, "LOW", "SUCCESS", "Normal Transaction"));
 
         // 2. Additional Reality Checks (e.g., Cross-border / Currency Risk)
-        // If it's a very high amount AND not in base currency (IDR), elevate risk
-        if ("HIGH".equals(amountBasedRule.getRiskLevel()) && !"IDR".equalsIgnoreCase(currency)) {
+        // If it's a very high amount AND not in base currency, elevate risk
+        if ("HIGH".equals(amountBasedRule.getRiskLevel()) && !baseCurrency.equalsIgnoreCase(currency)) {
              return new RiskRule(
                      amountBasedRule.getLimit(),
                      "CRITICAL",
@@ -38,7 +42,7 @@ public class RiskEvaluationService {
         }
 
         // If it's a medium amount but in a potentially volatile/foreign currency, elevate to HIGH
-        if ("MEDIUM".equals(amountBasedRule.getRiskLevel()) && !"IDR".equalsIgnoreCase(currency)) {
+        if ("MEDIUM".equals(amountBasedRule.getRiskLevel()) && !baseCurrency.equalsIgnoreCase(currency)) {
              return new RiskRule(
                      amountBasedRule.getLimit(),
                      "HIGH",
@@ -48,7 +52,7 @@ public class RiskEvaluationService {
         }
         
         // If it is a normal transaction but not in base currency, elevate to MEDIUM for review
-        if ("LOW".equals(amountBasedRule.getRiskLevel()) && !"IDR".equalsIgnoreCase(currency)) {
+        if ("LOW".equals(amountBasedRule.getRiskLevel()) && !baseCurrency.equalsIgnoreCase(currency)) {
              return new RiskRule(
                      new BigDecimal("0"),
                      "MEDIUM",

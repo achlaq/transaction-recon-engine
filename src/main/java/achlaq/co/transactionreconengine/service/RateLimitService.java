@@ -3,9 +3,10 @@ package achlaq.co.transactionreconengine.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
-import java.util.concurrent.TimeUnit;
+import java.util.Collections;
 
 @Service
 @RequiredArgsConstructor
@@ -18,10 +19,17 @@ public class RateLimitService {
 
     public boolean isRateLimited(Long userId) {
         String key = "VELOCITY::" + userId;
-        Long count = redisTemplate.opsForValue().increment(key);
-        if (count != null && count == 1) {
-            redisTemplate.expire(key, 60, TimeUnit.SECONDS);
-        }
+
+        String luaScript = 
+            "local current = redis.call('incr', KEYS[1]) " +
+            "if current == 1 then " +
+            "    redis.call('expire', KEYS[1], 60) " +
+            "end " +
+            "return current";
+
+        DefaultRedisScript<Long> script = new DefaultRedisScript<>(luaScript, Long.class);
+        Long count = redisTemplate.execute(script, Collections.singletonList(key));
+
         return count != null && count > maxTxPerMinute;
     }
 

@@ -5,15 +5,19 @@ import achlaq.co.transactionreconengine.dto.TransactionEvent;
 import achlaq.co.transactionreconengine.ledger.dto.LedgerEvent;
 import achlaq.co.transactionreconengine.ledger.dto.LedgerEventEntry;
 import achlaq.co.transactionreconengine.ledger.model.EntryType;
+import achlaq.co.transactionreconengine.model.OutboxEventEntity;
 import achlaq.co.transactionreconengine.model.TransactionEntity;
 import achlaq.co.transactionreconengine.recon.dto.ExternalSnapshotRequest;
 import achlaq.co.transactionreconengine.recon.service.ReconciliationService;
+import achlaq.co.transactionreconengine.repository.OutboxEventRepository;
 import achlaq.co.transactionreconengine.repository.TransactionRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,13 +31,13 @@ import java.util.List;
 public class TransactionProcessor {
 
     private final TransactionRepository transactionRepo;
+    private final OutboxEventRepository outboxEventRepo;
     private final StringRedisTemplate redisTemplate;
     private final RateLimitService rateLimitService;
     private final RiskEvaluationService riskEvaluationService;
     private final AuditService auditService;
-
-    private final KafkaTemplate<String, Object> kafkaTemplate;
     private final ReconciliationService reconciliationService;
+    private final ObjectMapper objectMapper;
 
     @Value("${app.kafka.topics.ledger}")
     private String ledgerTopic;
@@ -48,37 +52,44 @@ public class TransactionProcessor {
                 .setIfAbsent(lockKey, "LOCKED", Duration.ofMinutes(10));
 
         if (Boolean.FALSE.equals(isLocked)) {
-            log.warn("Duplicate Transaction: {}", requestId);
+            log.warn("Duplicate Transaction processing detected via Redis Lock: {}", requestId);
             return;
         }
 
         try {
             if (rateLimitService.isUserBlacklisted(userId)) {
                 auditService.saveAuditLogToElastic(event, "REJECTED_BLACKLIST", "HIGH", "User is in blacklist");
+                redisTemplate.opsForValue().set(lockKey, "PROCESSED", Duration.ofHours(24));
                 return;
             }
 
             if (rateLimitService.isRateLimited(userId)) {
                 auditService.saveAuditLogToElastic(event, "REJECTED_RATE_LIMIT", "HIGH", "Velocity limit exceeded");
+                redisTemplate.opsForValue().set(lockKey, "PROCESSED", Duration.ofHours(24));
                 return;
             }
 
             RiskRule matchedRule = riskEvaluationService.evaluateRisk(event);
 
-            saveTransactionAndAudit(event, matchedRule);
+            try {
+                saveTransactionAndAudit(event, matchedRule);
+            } catch (DataIntegrityViolationException e) {
+                log.warn("Duplicate Transaction saved to database: {}", requestId);
+                redisTemplate.opsForValue().set(lockKey, "PROCESSED", Duration.ofHours(24));
+                return;
+            }
 
             // Integrate with Ledger & Recon ONLY if the transaction is successful (LOW risk)
             if ("SUCCESS".equals(matchedRule.getStatus())) {
-                 publishLedgerEvent(event);
+                 saveLedgerEventToOutbox(event);
                  createReconSnapshot(event);
             }
 
-        } finally {
-            try {
-                redisTemplate.delete(lockKey);
-            } catch (Exception e) {
-                log.error("Failed to release Redis lock for key: {}", lockKey, e);
-            }
+            redisTemplate.opsForValue().set(lockKey, "PROCESSED", Duration.ofHours(24));
+
+        } catch (Exception e) {
+            redisTemplate.delete(lockKey); // Delete lock only on error so it can be retried
+            throw e;
         }
     }
 
@@ -90,29 +101,26 @@ public class TransactionProcessor {
         entity.setTimestamp(LocalDateTime.now());
         entity.setStatus(rule.getStatus());
 
-        transactionRepo.save(entity);
+        transactionRepo.saveAndFlush(entity);
 
         auditService.saveAuditLogToElastic(event, rule.getStatus(), rule.getRiskLevel(), rule.getReason());
 
         log.info("Tx Processed | ID: {} | Status: {}", event.getRequestId(), rule.getStatus());
     }
 
-    private void publishLedgerEvent(TransactionEvent event) {
+    private void saveLedgerEventToOutbox(TransactionEvent event) {
         LedgerEvent ledgerEvent = new LedgerEvent();
-        // Use the transaction requestId as the journalId to link them 1-to-1
         ledgerEvent.setJournalId(event.getRequestId()); 
         ledgerEvent.setReferenceId(event.getRequestId());
         ledgerEvent.setDescription("Auto-generated journal for Tx: " + event.getRequestId());
 
         LedgerEventEntry debitEntry = new LedgerEventEntry();
-        // Assuming we have a standard CLEARING account setup in the database
         debitEntry.setAccountCode("CLEARING"); 
         debitEntry.setEntryType(EntryType.DEBIT);
         debitEntry.setAmount(event.getAmount());
         debitEntry.setDescription("Money in from clearing");
 
         LedgerEventEntry creditEntry = new LedgerEventEntry();
-        // The target account from the transaction
         creditEntry.setAccountCode(event.getTargetAccount()); 
         creditEntry.setEntryType(EntryType.CREDIT);
         creditEntry.setAmount(event.getAmount());
@@ -120,11 +128,20 @@ public class TransactionProcessor {
 
         ledgerEvent.setEntries(List.of(debitEntry, creditEntry));
 
-        // Send to Kafka so the Ledger Module can pick it up asynchronously
-        kafkaTemplate.send(ledgerTopic, ledgerEvent.getJournalId(), ledgerEvent);
-        log.info("Published Ledger Event for Tx: {}", event.getRequestId());
+        try {
+            OutboxEventEntity outboxEvent = new OutboxEventEntity();
+            outboxEvent.setAggregateType("Transaction");
+            outboxEvent.setAggregateId(event.getRequestId());
+            outboxEvent.setEventType(ledgerTopic);
+            outboxEvent.setPayload(objectMapper.writeValueAsString(ledgerEvent));
+            
+            outboxEventRepo.save(outboxEvent);
+            log.info("Saved Ledger Event to Outbox for Tx: {}", event.getRequestId());
+        } catch (JsonProcessingException e) {
+            log.error("Failed to serialize ledger event for outbox", e);
+            throw new RuntimeException("Failed to serialize ledger event", e);
+        }
     }
-
 
     private void createReconSnapshot(TransactionEvent event) {
          try {

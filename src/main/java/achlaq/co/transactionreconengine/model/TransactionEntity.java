@@ -12,7 +12,10 @@ public class TransactionEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+    
+    @Column(unique = true, nullable = false)
     private String requestId;
+    
     private Long userId;
     private BigDecimal amount;
     private String status;
