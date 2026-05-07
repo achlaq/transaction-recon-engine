@@ -15,7 +15,7 @@ public class RiskRulesConfig {
     
     /**
      * Risk rules definitions.
-     * These rules are configured in application.properties under the prefix 'app.risk.rules'.
+     * These rules are configured in application.yml under the prefix 'app.risk.rules'.
      * If not provided in the properties file, it will default to an empty list.
      */
     private List<RiskRule> rules = new ArrayList<>();

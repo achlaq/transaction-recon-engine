@@ -19,7 +19,7 @@ class RiskEvaluationServiceTest {
     @BeforeEach
     void setUp() {
         RiskRulesConfig config = new RiskRulesConfig();
-        // Setup mock rules same as application.properties defaults
+        // Setup mock rules same as application.yml defaults
         config.setRules(List.of(
                 new RiskRule(new BigDecimal("100000000"), "HIGH", "FRAUD_DETECTED", "High Value Transaction Exceeded"),
                 new RiskRule(new BigDecimal("999999"), "MEDIUM", "REVIEW_NEEDED", "Suspicious Medium Value")
